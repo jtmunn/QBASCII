@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run current BASIC file in DOSBox",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\.vscode\\run-qbasic.ps1\" \"${fileBasename}\"",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Open QBasic IDE in DOSBox",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\.vscode\\run-qbasic.ps1\"",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

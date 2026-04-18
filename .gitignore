@@ -1,4 +1,8 @@
 # gitignore file for QBASCII
 
-# ignore .qbas files
+# ignore .qba files
 *.qba
+
+# DOSBox output files
+stderr.txt
+stdout.txt

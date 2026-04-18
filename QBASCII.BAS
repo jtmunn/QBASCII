@@ -451,8 +451,8 @@ END SUB
 SUB Center (pRow, pText$)
 	iLength = LEN(pText$)
 
-	IF iLength < 1 OR iLength > 80 THEN iLength = 80
-	IF pRow < 1 OR pRow > 25 THEN pRow = CSRLIN
+	IF iLength < 1 OR iLength > SCREEN.WIDTH THEN iLength = SCREEN.WIDTH
+	IF pRow < 1 OR pRow > SCREEN.HEIGHT THEN pRow = CSRLIN
 
 	iRelPos = (SCREEN.WIDTH / 2) - (iLength / 2)
 	
@@ -530,11 +530,11 @@ SUB DrawStatusBar (pAscii AS AsciiType, pShowStatus)
 	END IF
 
 	IF row = 0 THEN
-		oldRow = 25
-		row = 25
+		oldRow = SCREEN.HEIGHT
+		row = SCREEN.HEIGHT
 	END IF
  
-	IF pAscii.row = 25 THEN
+	IF pAscii.row = SCREEN.HEIGHT THEN
 		oldRow = row
 		row = 1
 
@@ -544,7 +544,7 @@ SUB DrawStatusBar (pAscii AS AsciiType, pShowStatus)
 
 	ELSEIF pAscii.row = 1 THEN
 		oldRow = row
-		row = 25
+		row = SCREEN.HEIGHT
 
 		IF row <> oldRow THEN
 			DrawRow oldRow
@@ -587,11 +587,11 @@ SUB DrawWindow (pR1, pC1, pR2, pC2, pStyle, pTitle$)
 			pStyle = pStyle - STYLE.BORDER.SOLID
 	END SELECT
 
-	IF pR2 = -1 THEN
+	IF pR2 <= pR1 THEN
 		pR2 = SCREEN.HEIGHT - pR1
 	END IF
 
-	IF pC2 = -1 THEN
+	IF pC2 <= pC1 THEN
 		pC2 = SCREEN.WIDTH - pC1
 	END IF
 
@@ -642,7 +642,7 @@ FUNCTION GetRowColBuffer (pRow, pCol)
 END FUNCTION
 
 FUNCTION GetRowFromBuffer (pBufferId)
-	GetRowFromBuffer = INT((pBufferId - 1) / SCREEN.WIDTH) + 1
+	GetRowFromBuffer = (pBufferId - 1) \ SCREEN.WIDTH + 1
 END FUNCTION
 
 SUB LoadFile
@@ -714,25 +714,39 @@ SUB LoadFile
 END SUB
 
 SUB Mouse (funk)
-	'"QBMouse.bas" Written 1999 by: Daryl R. Dubbs
-
-	'SHARED mouseH, mouseV, mouseB
-	STATIC crsr 'track whether Cursor is shown
-	IF funk% = 1 THEN crsr = 1 'show Cursor
-	IF funk% = 2 AND crsr = 0 THEN EXIT SUB       'don't hide cursor more than onced
-	IF funk% = 2 AND crsr = 1 THEN crsr = 0       'Hide cursor
-
-	POKE 100, 184: POKE 101, funk: POKE 102, 0   'Poke machine code necessary for
-	POKE 103, 205: POKE 104, 51: POKE 105, 137   'using the mouse into memeory
-	POKE 106, 30: POKE 107, 170: POKE 108, 10    'starting at offset 100 in the
-	POKE 109, 137: POKE 110, 14: POKE 111, 187   'current segment. This code
-	POKE 112, 11: POKE 113, 137: POKE 114, 22    'then executed as a unit, via the
-	POKE 115, 204: POKE 116, 12: POKE 117, 203   'statement "Call Absolute"
-	CALL Absolute(100) 'Call machine code
-	
-	mouseB = PEEK(&HAAA)                         'Get values for buttons
-	mouseH = CINT((PEEK(&HBBB) + PEEK(&HBBC) * 256) / 8)     'Horizontal position (2 bytes)
-	mouseV = CINT((PEEK(&HCCC) + PEEK(&HCCD) * 256) / 8)     'Vertical position (2 bytes)
+    ' Mouse interrupt handler using INT 33h
+    ' funk values: 0=Init, 1=Show, 2=Hide, 3=Get Status
+    
+    STATIC cursorVisible
+    
+    ' Handle cursor visibility tracking
+    IF funk = 1 THEN cursorVisible = TRUE
+    IF funk = 2 THEN
+        IF NOT cursorVisible THEN EXIT SUB
+        cursorVisible = FALSE
+    END IF
+    
+    ' Build INT 33h call in memory at offset 100
+    ' MOV AX, funk
+    POKE 100, &HB8: POKE 101, funk: POKE 102, 0
+    ' INT 33h
+    POKE 103, &HCD: POKE 104, &H33
+    ' MOV [0AAA], BX (button state)
+    POKE 105, &H89: POKE 106, &H1E: POKE 107, &HAA: POKE 108, &H0A
+    ' MOV [0BBB], CX (X position)
+    POKE 109, &H89: POKE 110, &H0E: POKE 111, &HBB: POKE 112, &H0B
+    ' MOV [0CCC], DX (Y position)
+    POKE 113, &H89: POKE 114, &H16: POKE 115, &HCC: POKE 116, &H0C
+    ' RETF
+    POKE 117, &HCB
+    
+    ' Execute the machine code
+    CALL Absolute(100)
+    
+    ' Retrieve results from memory
+    mouseB = PEEK(&HAAA)
+    mouseH = CINT((PEEK(&HBBB) + PEEK(&HBBC) * 256) / 8)
+    mouseV = CINT((PEEK(&HCCC) + PEEK(&HCCD) * 256) / 8)
 END SUB
 
 FUNCTION QBInput$ (pLength, pDefault$)
@@ -963,15 +977,18 @@ SUB ShowAsciiSelection (pAscii AS AsciiType)
 		IF oldMouseV <> mouseV OR oldMouseH <> mouseH OR oldMouseB <> mouseB THEN
 			needsRender = TRUE
 		
-			IF mouseV <> selRow THEN
-				IF mouseV > 0 AND mouseV <= rowMax THEN
-					selRow = mouseV
+			mRow = mouseV - rowOffset
+			mCol = (mouseH - colOffset) \ colSpacing
+
+			IF mRow <> selRow THEN
+				IF mRow > 0 AND mRow <= rowMax THEN
+					selRow = mRow
 				END IF
 			END IF
 
-			IF mouseH <> selCol THEN
-				IF mouseH > 0 AND mouseH <= colMax THEN
-					selCol = mouseH
+			IF mCol <> selCol THEN
+				IF mCol > 0 AND mCol <= colMax THEN
+					selCol = mCol
 				END IF
 			END IF
 
